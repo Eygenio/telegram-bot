@@ -10,7 +10,7 @@ class ModelBase(pw.Model):
     Класс Базовая Модель. Родитель: pw.Model
     created_at: поле, даты когда был сделан запрос
     """
-    created_at = pw.DateField(default=datetime.now())
+    created_at = pw.DateTimeField(default=datetime.now)
 
     class Meta():
         """

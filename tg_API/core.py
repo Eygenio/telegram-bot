@@ -1,12 +1,26 @@
 import telebot
 
+from telegram_bot_pagination import InlineKeyboardPaginator
+from settings import BotSettings
 from database.common.models import History, db
 from main import db_write, db_read
 from site_API.core import headers, params, site_api, url
 
-token = "5972653478:AAEpTy0DN5K6fnvlO2Z09_omxSKWMkFrQl8"
+token = BotSettings()
 
-bot = telebot.TeleBot(token)
+bot = telebot.TeleBot(token.bot_token.get_secret_value())
+
+car_lines = []
+
+
+@bot.message_handler(commands=["start"])
+def start_hello_world(message):
+    """
+    Функция реагирующая на команду в телеграмм-боте /start,
+    отправляющая сообщение "Привет ✌️. Вас приветствует @EygenioBot." в телеграмм.
+    """
+    bot.send_message(message.chat.id, "Привет ✌️. Вас приветствует @EygenioBot.\n"
+                                      "С моими возможностями можно ознакомиться в /help")
 
 
 @bot.message_handler(commands=["hello-world"])
@@ -39,48 +53,34 @@ def start_message(message):
 def start_message(message):
     """
     Функция реагирующая на команду в телеграмм-боте /low,
-    отправляющая сообщение со списком автомобилей с наименьшим
-    годом выпуска, отсортированной по маркам и моделям, в телеграмм.
+    отправляющая список автомобилей с наименьшим
+    годом выпуска в функцию get_sorted_cars_list.
     """
     db_write(db, History, [{"message": message.text}])
     cars_low_year = site_api.get_cars_low_year()
     response = cars_low_year("GET", url, headers, params)
-    sorted_response = sorted(response, key=lambda element: (element["make"], element["model"]))
-
-    car_line = ''.join(f'{car["make"]} - {car["model"]} - {car["year"]} - {car["type"]}\n' for car in sorted_response)
-    if len(car_line) > 4096:
-        for line in range(0, len(car_line), 4096):
-            bot.send_message(message.chat.id, car_line[line:line + 4096])
-    else:
-        bot.send_message(message.chat.id, car_line)
+    get_sorted_cars_list(response, message)
 
 
 @bot.message_handler(commands=["high"])
 def start_message(message):
     """
     Функция реагирующая на команду в телеграмм-боте /high,
-    отправляющая сообщение со списком автомобилей с наибольшим
-    годом выпуска, отсортированным по маркам и моделям, в телеграмм.
+    отправляющая список автомобилей с наибольшим
+    годом выпуска в функцию get_sorted_cars_list.
     """
     db_write(db, History, [{"message": message.text}])
     cars_high_year = site_api.get_cars_high_year()
     response = cars_high_year("GET", url, headers, params)
-    sorted_response = sorted(response, key=lambda element: (element["make"], element["model"]))
-
-    car_line = ''.join(f'{car["make"]} - {car["model"]} - {car["year"]} - {car["type"]}\n' for car in sorted_response)
-    if len(car_line) > 4096:
-        for line in range (0, len(car_line), 4096):
-            bot.send_message(message.chat.id, car_line[line:line + 4096])
-    else:
-        bot.send_message(message.chat.id, car_line)
+    get_sorted_cars_list(response, message)
 
 
 @bot.message_handler(commands=["custom"])
 def start_message(message):
     """
     Функция реагирующая на команду в телеграмм-боте /custom,
-    отправляющая сообщение со списком автомобилей в заданном
-    промежутке года выпуска, отсортированным по годам, маркам и моделям, в телеграмм.
+    отправляющая список автомобилей в заданном промежутке
+    года выпуска в функцию get_sorted_cars_list.
     Из текста сообщения извлекаются только цифры, если их 8,
     то формируется промежуток лет, где первые 4 - начало, последние
     4 - конец, если количество цифр не равно 8, выводит сообщение:
@@ -98,14 +98,11 @@ def start_message(message):
 
         cars_custom_year = site_api.get_cars_custom_year()
         response = cars_custom_year("GET", url, headers, params, first_year, second_year)
-        sorted_response = sorted(response, key=lambda element: (element["year"], element["make"], element["model"]))
 
-        car_line = ''.join(f'{car["make"]} - {car["model"]} - {car["year"]} - {car["type"]}\n' for car in sorted_response)
-        if len(car_line) > 4096:
-            for line in range(0, len(car_line), 4096):
-                bot.send_message(message.chat.id, car_line[line:line + 4096])
+        if response:
+            get_sorted_cars_list(response, message)
         else:
-            bot.send_message(message.chat.id, car_line)
+            bot.send_message(message.chat.id, "Автомобили по данным годам отсутствуют")
     else:
         bot.send_message(message.chat.id, "Хммм...не совсем понимаю, что Вы хотите, почитайте /help")
 
@@ -114,8 +111,8 @@ def start_message(message):
 def start_message(message):
     """
     Функция реагирующая на команду в телеграмм-боте /make,
-    отправляющая сообщение со списком автомобилей заданной
-    марки, отсортированного по моделям, в телеграмм.
+    отправляющая список автомобилей заданной марки
+    в функцию get_sorted_cars_list.
     Из текста сообщения отделяется часть после команды "/make "
     и происходит поиск по совпадению, если марка не найдена выводит сообщение:
     "Марка не найдена или неверно введено название"
@@ -124,15 +121,7 @@ def start_message(message):
     cars_buy_make = site_api.get_cars_buy_make()
     response = cars_buy_make("GET", url, headers, {"make": message.text[6:]})
     if response:
-
-        sorted_response = sorted(response, key=lambda element: (element["model"]))
-
-        car_line = ''.join(f'{car["make"]} - {car["model"]} - {car["year"]} - {car["type"]}\n' for car in sorted_response)
-        if len(car_line) > 4096:
-            for line in range(0, len(car_line), 4096):
-                bot.send_message(message.chat.id, car_line[line:line + 4096])
-        else:
-            bot.send_message(message.chat.id, car_line)
+        get_sorted_cars_list(response, message)
 
     else:
         bot.send_message(message.chat.id, "Марка не найдена или неверно введено название")
@@ -142,8 +131,8 @@ def start_message(message):
 def start_message(message):
     """
     Функция реагирующая на команду в телеграмм-боте /model,
-    отправляющая сообщение со списком автомобилей заданной
-    модели, отсортированного по маркам, в телеграмм.
+    отправляющая спискок автомобилей заданной модели
+    в функцию get_sorted_cars_list.
     Из текста сообщения отделяется часть после команды "/model "
     и происходит поиск по совпадению, если модель не найдена выводит сообщение:
    "Модель не найдена или неверно введено название"
@@ -152,15 +141,7 @@ def start_message(message):
     cars_buy_model = site_api.get_cars_buy_model()
     response = cars_buy_model("GET", url, headers, {"model": message.text[7:]})
     if response:
-
-        sorted_response = sorted(response, key=lambda element: (element["make"]))
-
-        car_line = ''.join(f'{car["make"]} - {car["model"]} - {car["year"]} - {car["type"]}\n' for car in sorted_response)
-        if len(car_line) > 4096:
-            for line in range(0, len(car_line), 4096):
-                bot.send_message(message.chat.id, car_line[line:line + 4096])
-        else:
-            bot.send_message(message.chat.id, car_line)
+        get_sorted_cars_list(response, message)
 
     else:
         bot.send_message(message.chat.id, "Модель не найдена или неверно введено название")
@@ -193,6 +174,75 @@ def start_hello(message):
         bot.send_message(message.chat.id, "Привет ✌️. Вас приветствует @EygenioBot. ")
     else:
         bot.send_message(message.chat.id, "Хммм...не совсем понимаю, что Вы хотите, почитайте /help")
+
+
+@bot.callback_query_handler(func=lambda call: call.data.split('#')[0] == 'character')
+def characters_page_callback(call):
+    """
+    Функция для обработки нажатия кнопок, при выведении
+    большого списка автомобилей, более 20-ти.
+    """
+    page = int(call.data.split('#')[1])
+    bot.delete_message(
+        call.message.chat.id,
+        call.message.message_id
+    )
+    send_character_page(call.message, page)
+
+
+def get_sorted_cars_list(cars, message):
+    """
+    Функция сортирующая список автомобилей по году выпуску, марке, модели,
+    после сортировки если список более 20-ти автомобилей, то разбивает на строки
+    по 20 автомобилей и добавляет их в глобальный список car_lines для дальнейшего его выведения в
+    телеграммботе
+    :param cars: список автомобилей
+    :param message: сообщение полученное в телеграмме
+    """
+    global car_lines
+    car_lines.clear()
+    car_line = ''
+    sorted_cars = sorted(cars, key=lambda element: (element["year"], element["make"], element["model"]))
+    if len(sorted_cars) // 20 > 1:
+        count = 0
+        for car in sorted_cars:
+            if count < 20:
+                car_line += ''.join(f'{car["make"]} - {car["model"]} - {car["year"]} - {car["type"]}\n')
+                count += 1
+            else:
+                car_lines.append(car_line)
+                car_line = ''
+                count = 0
+        car_lines.append(car_line)
+    else:
+        car_lines = [''.join(f'{car["make"]} - '
+                             f'{car["model"]} - '
+                             f'{car["year"]} - '
+                             f'{car["type"]}\n'
+                             for car in sorted_cars)]
+
+    send_character_page(message)
+
+
+def send_character_page(message, page=1):
+    """
+    Функция пагинации глобального списка car_lines на и
+    выводит в телеграмм
+    :param message: сообщение полученное в телеграмме
+    :param page: номер страницы
+    """
+    paginator = InlineKeyboardPaginator(
+        len(car_lines),
+        current_page=page,
+        data_pattern='character#{page}'
+    )
+
+    bot.send_message(
+        message.chat.id,
+        car_lines[page-1],
+        reply_markup=paginator.markup,
+        parse_mode='Markdown'
+    )
 
 
 bot.infinity_polling()

@@ -4,7 +4,7 @@ from time import sleep
 import requests
 
 
-def _make_response(method: str, url: str, headers: Dict, params: Dict) -> Any:
+def _make_response(method: str, url: str, headers: Dict, params: Dict, timeout: int = 10) -> Any:
     """
     Функция формирующая запрос на API, возвращая полученный ответ.
     :param method: строка для формирования запроса на API
@@ -13,15 +13,19 @@ def _make_response(method: str, url: str, headers: Dict, params: Dict) -> Any:
     :param params: параметры запроса на API
     :return: возвращается ответ от запроса на API.
     """
+    try:
+        response = requests.request(
+            method,
+            url,
+            headers=headers,
+            params=params,
+            timeout=timeout
+        )
+        if response.status_code == requests.codes.ok:
+            return response
 
-    response = requests.request(
-        method,
-        url,
-        headers=headers,
-        params=params
-    )
-
-    return response
+    except Exception:
+        print('Ошибка, нет ответа от сервера.')
 
 
 def _get_cars_low_year(method: str, url: str, headers: Dict, params: Dict, func=_make_response) -> List:
@@ -39,8 +43,8 @@ def _get_cars_low_year(method: str, url: str, headers: Dict, params: Dict, func=
     url_year = "{0}/cars/years".format(url)
     year = min(func(method, url_year, headers=headers, params=params).json())
     sleep(1)
-    params = {"limit": 50, "page": 0, "year": year}
 
+    params = {"limit": 50, "page": 0, "year": year}
     url = "{0}/cars".format(url)
     result = func(method, url, headers=headers, params=params)
     sleep(1)
@@ -75,8 +79,8 @@ def _get_cars_high_year(method: str, url: str, headers: Dict, params: Dict, func
     url_year = "{0}/cars/years".format(url)
     year = max(func(method, url_year, headers=headers, params=params).json())
     sleep(1)
-    params = {"limit": 50, "page": 0, "year": year}
 
+    params = {"limit": 50, "page": 0, "year": year}
     url = "{0}/cars".format(url)
     result = func(method, url, headers=headers, params=params)
     sleep(1)
@@ -97,7 +101,7 @@ def _get_cars_high_year(method: str, url: str, headers: Dict, params: Dict, func
 
 
 def _get_cars_custom_year(method: str, url: str, headers: Dict, params: Dict,
-                          start_year: int, finish_year: int, func=_make_response):
+                          start_year: int, finish_year: int, func=_make_response) -> List:
     """
     Функция, которая формирует список автомобилей с годом выпуска диапазона от start_year до finish_year
     :param method: строка для формирования запроса на API
@@ -110,11 +114,19 @@ def _get_cars_custom_year(method: str, url: str, headers: Dict, params: Dict,
     :return: возвращается список автомобилей с наибольшим годом выпуска
     """
     response = []
-    url = "{0}/cars".format(url)
+    years_list = []
+    url_year = "{0}/cars/years".format(url)
+    years = func(method, url_year, headers=headers, params=params).json()
+    sleep(1)
 
     for year in range(start_year, finish_year + 1):
-        params = {"limit": 50, "page": 0, "year": year}
+        if year in years:
+            years_list.append(year)
 
+    url = "{0}/cars".format(url)
+
+    for get_year in years_list:
+        params = {"limit": 50, "page": 0, "year": get_year}
         result = func(method, url, headers=headers, params=params)
         sleep(1)
 
