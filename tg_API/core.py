@@ -10,7 +10,7 @@ token = BotSettings()
 
 bot = telebot.TeleBot(token.bot_token.get_secret_value())
 
-car_lines = []
+car_lines = {}
 
 
 @bot.message_handler(commands=["start"])
@@ -38,7 +38,7 @@ def start_message(message):
     Функция реагирующая на команду в телеграмм-боте /help,
     отправляющая сообщение со списком команд в телеграмм.
     """
-    db_write(db, History, [{"message": message.text}])
+    db_write(db, History, [{"message": message.text, "id_user": message.from_user.id}])
     bot.send_message(message.chat.id, "Список команд:"
                                       "\n\t'/low' - выводит список автомобилей самого старого года выпуска;"
                                       "\n\t'/high' - выводит список автомобилей самого нового года выпуска;"
@@ -56,7 +56,7 @@ def start_message(message):
     отправляющая список автомобилей с наименьшим
     годом выпуска в функцию get_sorted_cars_list.
     """
-    db_write(db, History, [{"message": message.text}])
+    db_write(db, History, [{"message": message.text, "id_user": message.from_user.id}])
     cars_low_year = site_api.get_cars_low_year()
     response = cars_low_year("GET", url, headers, params)
     get_sorted_cars_list(response, message)
@@ -69,7 +69,7 @@ def start_message(message):
     отправляющая список автомобилей с наибольшим
     годом выпуска в функцию get_sorted_cars_list.
     """
-    db_write(db, History, [{"message": message.text}])
+    db_write(db, History, [{"message": message.text, "id_user": message.from_user.id}])
     cars_high_year = site_api.get_cars_high_year()
     response = cars_high_year("GET", url, headers, params)
     get_sorted_cars_list(response, message)
@@ -86,7 +86,7 @@ def start_message(message):
     4 - конец, если количество цифр не равно 8, выводит сообщение:
     "Хммм...не совсем понимаю, что Вы хотите, почитайте /help"
     """
-    db_write(db, History, [{"message": message.text}])
+    db_write(db, History, [{"message": message.text, "id_user": message.from_user.id}])
     result = ''
     for symbol in message.text:
         if symbol.isdigit():
@@ -95,6 +95,8 @@ def start_message(message):
     if len(result) == 8:
         first_year = int(result[0:4])
         second_year = int(result[4:8])
+        if first_year > second_year:
+            first_year, second_year = second_year, first_year
 
         cars_custom_year = site_api.get_cars_custom_year()
         response = cars_custom_year("GET", url, headers, params, first_year, second_year)
@@ -117,7 +119,7 @@ def start_message(message):
     и происходит поиск по совпадению, если марка не найдена выводит сообщение:
     "Марка не найдена или неверно введено название"
     """
-    db_write(db, History, [{"message": message.text}])
+    db_write(db, History, [{"message": message.text, "id_user": message.from_user.id}])
     cars_buy_make = site_api.get_cars_buy_make()
     response = cars_buy_make("GET", url, headers, {"make": message.text[6:]})
     if response:
@@ -137,7 +139,7 @@ def start_message(message):
     и происходит поиск по совпадению, если модель не найдена выводит сообщение:
    "Модель не найдена или неверно введено название"
     """
-    db_write(db, History, [{"message": message.text}])
+    db_write(db, History, [{"message": message.text, "id_user": message.from_user.id}])
     cars_buy_model = site_api.get_cars_buy_model()
     response = cars_buy_model("GET", url, headers, {"model": message.text[7:]})
     if response:
@@ -153,14 +155,20 @@ def start_message(message):
     Функция реагирующая на команду в телеграмм-боте /history,
     отправляющая сообщение с последними 10 запросами в телеграмм.
     """
-    db_write(db, History, [{"message": message.text}])
-    retrieved = db_read(db, History, History.message)
-    if len(retrieved) >= 10:
-        history_line = ''.join(f'{element.message}\n' for element in retrieved[len(retrieved) - 10:])
+    history = []
+    db_write(db, History, [{"message": message.text, "id_user": message.from_user.id}])
+    retrieved = db_read(db, History, History.message, History.id_user)
+    for element in retrieved:
+        if element.id_user == str(message.from_user.id):
+            history.append(element.message)
+    if len(history) >= 10:
+        history_line = ''.join(f'{command}\n' for command in history[len(history) - 10:])
         bot.send_message(message.chat.id, history_line)
     else:
-        history_line = ''.join(f'{element.message}\n' for element in retrieved)
+        history_line = ''.join(f'{command}\n' for command in history[len(history) - 10:])
         bot.send_message(message.chat.id, history_line)
+        bot.send_message(message.chat.id, history_line)
+    history.clear()
 
 
 @bot.message_handler(content_types=['text'])
@@ -200,7 +208,7 @@ def get_sorted_cars_list(cars, message):
     :param message: сообщение полученное в телеграмме
     """
     global car_lines
-    car_lines.clear()
+    car_lines[message.from_user.id] = []
     car_line = ''
     sorted_cars = sorted(cars, key=lambda element: (element["year"], element["make"], element["model"]))
     if len(sorted_cars) // 20 > 1:
@@ -210,16 +218,15 @@ def get_sorted_cars_list(cars, message):
                 car_line += ''.join(f'{car["make"]} - {car["model"]} - {car["year"]} - {car["type"]}\n')
                 count += 1
             else:
-                car_lines.append(car_line)
+                car_lines[message.from_user.id].append(car_line)
                 car_line = ''
                 count = 0
-        car_lines.append(car_line)
+        car_lines[message.from_user.id].append(car_line)
     else:
-        car_lines = [''.join(f'{car["make"]} - '
-                             f'{car["model"]} - '
-                             f'{car["year"]} - '
-                             f'{car["type"]}\n'
-                             for car in sorted_cars)]
+        car_lines[message.from_user.id] = [''.join(f'{car["make"]} - '
+                                                   f'{car["model"]} - '
+                                                   f'{car["year"]} - '
+                                                   f'{car["type"]}\n' for car in sorted_cars)]
 
     send_character_page(message)
 
@@ -232,14 +239,14 @@ def send_character_page(message, page=1):
     :param page: номер страницы
     """
     paginator = InlineKeyboardPaginator(
-        len(car_lines),
+        len(car_lines[message.chat.id]),
         current_page=page,
         data_pattern='character#{page}'
     )
 
     bot.send_message(
         message.chat.id,
-        car_lines[page-1],
+        car_lines[message.chat.id][page-1],
         reply_markup=paginator.markup,
         parse_mode='Markdown'
     )
