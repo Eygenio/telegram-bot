@@ -24,6 +24,7 @@ class ModelBase(pw.Model):
 class History(ModelBase):
     """
     Класс История. Родитель:ModelBase
+    id_user: поле, id пользователя отправившего сообщение
     message: поле, теста запроса сохраненного в истории
     """
     id_user = pw.TextField()
