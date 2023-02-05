@@ -24,6 +24,6 @@ You can run bot check commands:
 /help - to show available commands
 /history - to show ten last commands
 /low - to show the oldest cars
-/high - to show latest cars
+/high - to show newest cars
 /custom xxxx - xxxx - to show cars in your range
 ```
