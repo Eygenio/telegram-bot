@@ -14,7 +14,7 @@ For development run:
 ```bash
 SITE_API = Your key received from the API at 'https://rapidapi.com/principalapis/api/car-data'
 HOST_API = X-RapidAPI-Host from the site: 'https://rapidapi.com/principalapis/api/car-data'
-BOT_TOKEN = 'YOUR_TOKEN' yarn run develop
+BOT_TOKEN = 'YOUR_TOKEN' bot token to develop
 ```
 
 You can run bot check commands:
